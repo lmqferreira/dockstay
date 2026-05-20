@@ -1,6 +1,6 @@
 cask "dockstay" do
   version "1.0.0"
-  sha256 "008dc2ec40e45c5474292bf9b35268156cc65eac645d77a5d0cf64308b06fc2d"
+  sha256 "7da665e1924d1bb9fdcee2d11424f3d75cd3504badb9622b7c321747317a7da3"
 
   url "https://github.com/lmqferreira/dockstay/releases/download/v#{version}/dockstay-arm64.zip"
   name "DockStay"
