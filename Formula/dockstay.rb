@@ -5,7 +5,6 @@ class Dockstay < Formula
   sha256 "b852c3163a9f41f49bb54a1be1135419bc0a92c3176b18aed0c03dbfe5ec509e"
   license "MIT"
 
-  depends_on xcode: ["15.0", :build]
   depends_on macos: :ventura
 
   def install
