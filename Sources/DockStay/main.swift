@@ -84,6 +84,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func buildMenu() -> NSMenu {
         let menu = NSMenu()
 
+        let hideItem = NSMenuItem(title: "Hide Icon", action: #selector(hideIconFromMenu), keyEquivalent: "")
+        hideItem.target = self
+        menu.addItem(hideItem)
+
         let settingsItem = NSMenuItem(title: "Settings…", action: #selector(showSettingsWindow), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
@@ -233,6 +237,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
            let checkbox = contentView.viewWithTag(1) as? NSButton {
             checkbox.state = gEnabled ? .on : .off
         }
+    }
+
+    @objc private func hideIconFromMenu() {
+        defaults.set(false, forKey: kShowMenuBarIcon)
+        hideMenuBarIcon()
     }
 
     @objc private func quitApp() {
