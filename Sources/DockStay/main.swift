@@ -1,5 +1,5 @@
 // main.swift — DockStay menu bar app
-// Minimal NSApplication with status item. No Dock icon.
+// NSApplication with status item and settings window.
 
 import Cocoa
 import ServiceManagement
@@ -7,48 +7,34 @@ import ServiceManagement
 // MARK: - App Delegate
 
 class AppDelegate: NSObject, NSApplicationDelegate {
-    private var statusItem: NSStatusItem!
+    private var statusItem: NSStatusItem?
+    private var settingsWindow: NSWindow?
     private let defaults = UserDefaults.standard
 
     private let kEnabled = "enabled"
     private let kLaunchAtLogin = "launchAtLogin"
+    private let kShowMenuBarIcon = "showMenuBarIcon"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Check accessibility permissions
-        let trusted = AXIsProcessTrustedWithOptions(
-            [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
-        )
-        if !trusted {
-            let alert = NSAlert()
-            alert.messageText = "DockStay needs Accessibility access"
-            alert.informativeText = "Grant access in System Settings → Privacy & Security → Accessibility, then relaunch DockStay."
-            alert.alertStyle = .warning
-            alert.addButton(withTitle: "Open System Settings")
-            alert.addButton(withTitle: "Quit")
-            let response = alert.runModal()
-            if response == .alertFirstButtonReturn {
-                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
-            }
-            NSApp.terminate(nil)
-            return
+        // Prompt for accessibility if not already granted. Don't quit — app still works for UI,
+        // event tap will just fail until permission is granted and app restarted.
+        if !AXIsProcessTrusted() {
+            _ = AXIsProcessTrustedWithOptions(
+                [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
+            )
         }
 
         // Load preferences
-        defaults.register(defaults: [kEnabled: true, kLaunchAtLogin: false])
+        defaults.register(defaults: [kEnabled: true, kLaunchAtLogin: false, kShowMenuBarIcon: true])
         gEnabled = defaults.bool(forKey: kEnabled)
 
         // Set up screens and monitoring
         refreshScreens()
         startDisplayMonitor()
 
-        // Set up status bar — left click toggles, right click shows menu
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        updateIcon()
-
-        if let button = statusItem.button {
-            button.action = #selector(statusBarClicked(_:))
-            button.target = self
-            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        // Set up menu bar icon if enabled
+        if defaults.bool(forKey: kShowMenuBarIcon) {
+            showMenuBarIcon()
         }
 
         // Start event tap if enabled
@@ -61,28 +47,49 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    // MARK: - Status Bar Icon
+    // Re-launching the app (e.g. from Spotlight) opens the settings window
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showSettingsWindow()
+        return false
+    }
+
+    // MARK: - Menu Bar Icon
+
+    private func showMenuBarIcon() {
+        guard statusItem == nil else { return }
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        updateIcon()
+        if let button = statusItem?.button {
+            button.action = #selector(statusBarClicked(_:))
+            button.target = self
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        }
+    }
+
+    private func hideMenuBarIcon() {
+        if let item = statusItem {
+            NSStatusBar.system.removeStatusItem(item)
+            statusItem = nil
+        }
+    }
 
     private func updateIcon() {
-        guard let button = statusItem.button else { return }
+        guard let button = statusItem?.button else { return }
         let name = gEnabled ? "pin.fill" : "pin.slash"
         button.image = NSImage(systemSymbolName: name, accessibilityDescription: "DockStay")
     }
 
-    // MARK: - Menu
+    // MARK: - Right-Click Menu
 
     private func buildMenu() -> NSMenu {
         let menu = NSMenu()
 
-        // Launch at login
-        let loginItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin(_:)), keyEquivalent: "")
-        loginItem.target = self
-        loginItem.state = defaults.bool(forKey: kLaunchAtLogin) ? .on : .off
-        menu.addItem(loginItem)
+        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(showSettingsWindow), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
 
         menu.addItem(.separator())
 
-        // Quit
         let quitItem = NSMenuItem(title: "Quit DockStay", action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
@@ -90,18 +97,115 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return menu
     }
 
-    // MARK: - Actions
+    // MARK: - Settings Window
+
+    @objc private func showSettingsWindow() {
+        if let window = settingsWindow {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 200),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "DockStay"
+        window.center()
+        window.isReleasedWhenClosed = false
+
+        let contentView = NSView(frame: window.contentView!.bounds)
+        contentView.autoresizingMask = [.width, .height]
+
+        var y: CGFloat = 155
+
+        // Enabled toggle
+        let enabledCheck = NSButton(checkboxWithTitle: "Dock pinning enabled", target: self, action: #selector(settingsToggleEnabled(_:)))
+        enabledCheck.frame = NSRect(x: 20, y: y, width: 280, height: 20)
+        enabledCheck.state = gEnabled ? .on : .off
+        enabledCheck.tag = 1
+        contentView.addSubview(enabledCheck)
+        y -= 30
+
+        // Launch at login
+        let loginCheck = NSButton(checkboxWithTitle: "Launch at login", target: self, action: #selector(settingsToggleLaunchAtLogin(_:)))
+        loginCheck.frame = NSRect(x: 20, y: y, width: 280, height: 20)
+        loginCheck.state = defaults.bool(forKey: kLaunchAtLogin) ? .on : .off
+        loginCheck.tag = 2
+        contentView.addSubview(loginCheck)
+        y -= 30
+
+        // Show menu bar icon
+        let iconCheck = NSButton(checkboxWithTitle: "Show menu bar icon", target: self, action: #selector(settingsToggleMenuBarIcon(_:)))
+        iconCheck.frame = NSRect(x: 20, y: y, width: 280, height: 20)
+        iconCheck.state = defaults.bool(forKey: kShowMenuBarIcon) ? .on : .off
+        iconCheck.tag = 3
+        contentView.addSubview(iconCheck)
+        y -= 40
+
+        // Info label
+        let infoLabel = NSTextField(labelWithString: "Tip: Re-open DockStay from Spotlight\nto access this window when icon is hidden.")
+        infoLabel.frame = NSRect(x: 20, y: y, width: 280, height: 35)
+        infoLabel.font = NSFont.systemFont(ofSize: 11)
+        infoLabel.textColor = .secondaryLabelColor
+        contentView.addSubview(infoLabel)
+
+        window.contentView = contentView
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        settingsWindow = window
+    }
+
+    // MARK: - Settings Actions
+
+    @objc private func settingsToggleEnabled(_ sender: NSButton) {
+        if sender.state == .on {
+            gEnabled = startEventTap()
+            sender.state = gEnabled ? .on : .off
+        } else {
+            stopEventTap()
+            gEnabled = false
+        }
+        defaults.set(gEnabled, forKey: kEnabled)
+        updateIcon()
+    }
+
+    @objc private func settingsToggleLaunchAtLogin(_ sender: NSButton) {
+        let newValue = sender.state == .on
+        defaults.set(newValue, forKey: kLaunchAtLogin)
+        do {
+            if newValue {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+        } catch {
+            defaults.set(!newValue, forKey: kLaunchAtLogin)
+            sender.state = newValue ? .off : .on
+        }
+    }
+
+    @objc private func settingsToggleMenuBarIcon(_ sender: NSButton) {
+        let show = sender.state == .on
+        defaults.set(show, forKey: kShowMenuBarIcon)
+        if show {
+            showMenuBarIcon()
+        } else {
+            hideMenuBarIcon()
+        }
+    }
+
+    // MARK: - Status Bar Actions
 
     @objc private func statusBarClicked(_ sender: Any?) {
         let event = NSApp.currentEvent
         if event?.type == .rightMouseUp {
-            // Right click: show menu
-            statusItem.menu = buildMenu()
-            statusItem.button?.performClick(nil)
-            // Clear menu so left click works next time
-            DispatchQueue.main.async { self.statusItem.menu = nil }
+            statusItem?.menu = buildMenu()
+            statusItem?.button?.performClick(nil)
+            DispatchQueue.main.async { self.statusItem?.menu = nil }
         } else {
-            // Left click: toggle
             toggleEnabled()
         }
     }
@@ -112,25 +216,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             gEnabled = false
         } else {
             gEnabled = startEventTap()
+            // If event tap failed (no accessibility), show alert
+            if !gEnabled {
+                let alert = NSAlert()
+                alert.messageText = "Cannot enable Dock pinning"
+                alert.informativeText = "Accessibility permissions are required. Grant access in System Settings, then try again."
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: "OK")
+                alert.runModal()
+            }
         }
         defaults.set(gEnabled, forKey: kEnabled)
         updateIcon()
-    }
-
-    @objc private func toggleLaunchAtLogin(_ sender: NSMenuItem) {
-        let current = defaults.bool(forKey: kLaunchAtLogin)
-        let newValue = !current
-        defaults.set(newValue, forKey: kLaunchAtLogin)
-
-        do {
-            if newValue {
-                try SMAppService.mainApp.register()
-            } else {
-                try SMAppService.mainApp.unregister()
-            }
-        } catch {
-            // Revert on failure
-            defaults.set(current, forKey: kLaunchAtLogin)
+        // Update settings window checkbox if open
+        if let contentView = settingsWindow?.contentView,
+           let checkbox = contentView.viewWithTag(1) as? NSButton {
+            checkbox.state = gEnabled ? .on : .off
         }
     }
 
