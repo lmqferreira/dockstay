@@ -11,6 +11,10 @@ cask "dockstay" do
 
   binary "dockstay"
 
+  postflight do
+    system_command "/usr/bin/xattr", args: ["-d", "com.apple.quarantine", "#{staged_path}/dockstay"]
+  end
+
   zap trash: [
     "~/Library/Preferences/com.lmqferreira.dockstay.plist",
   ]
