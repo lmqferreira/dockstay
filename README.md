@@ -12,7 +12,7 @@ On multi-monitor Macs, the Dock moves to whichever screen your cursor touches th
 
 ```bash
 brew tap lmqferreira/dockstay
-brew install dockstay
+brew install --cask dockstay
 ```
 
 ### Manual
@@ -49,7 +49,7 @@ Display changes, sleep/wake, and monitor connect/disconnect are handled automati
 ```bash
 make uninstall
 # or if installed via Homebrew:
-brew uninstall dockstay
+brew uninstall --cask dockstay
 ```
 
 ## Requirements
