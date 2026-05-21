@@ -118,10 +118,10 @@ private func eventTapCallback(
         if let tap = gEventTap {
             CGEvent.tapEnable(tap: tap, enable: true)
         }
-        return Unmanaged.passRetained(event)
+        return Unmanaged.passUnretained(event)
     }
 
-    if !gEnabled { return Unmanaged.passRetained(event) }
+    if !gEnabled { return Unmanaged.passUnretained(event) }
 
     let loc = event.location
     let nudge = gNudgePixels
@@ -159,7 +159,7 @@ private func eventTapCallback(
         break
     }
 
-    return Unmanaged.passRetained(event)
+    return Unmanaged.passUnretained(event)
 }
 
 // MARK: - Event Tap Lifecycle
